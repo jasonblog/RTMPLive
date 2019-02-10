@@ -1,0 +1,18 @@
+<resources>
+    <string name="app_name">RTMP_Live</string>
+
+    <string name="start_live">PUSH</string>
+    <string name="watch_live">PULL</string>
+    <string name="str_rtmp">RTMP</string>
+
+    <string name="hint_rtmp_url">rtmp://106.104.121.78/live/stream</string>
+    <string name="str_rtmp_success">RTMP 連線成功</string>
+    <string name="str_rtmp_failed">RTMP 連線失败</string>
+    <string name="str_rtmp_status">RTMP 延遲：%1$d 網路：%2$d</string>
+    <string name="str_rtmp_reconnecting">RTMP 重連線中(%1$d秒)...</string>
+    <string name="str_rtmp_play_success">RTMP 播放成功</string>
+    <string name="str_rtmp_pull_status">RTMP 緩衝區：%1$d 編碼率：%2$d</string>
+    <string name="version">V0.0.1</string>
+
+    <string name="str_rtmp_company"> TEST </string>
+</resources>
