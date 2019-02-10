@@ -1,0 +1,212 @@
+#include "DelayQueue.hh"
+#include "GroupsockHelper.hh"
+static const int MILLION = 1000000;
+int Timeval::operator >= (const Timeval& arg2) const
+{
+    return seconds() > arg2.seconds() ||
+           (seconds() == arg2.seconds() &&
+            useconds() >= arg2.useconds());
+}
+
+void Timeval::operator += (const DelayInterval& arg2)
+{
+    secs()  += arg2.seconds();
+    usecs() += arg2.useconds();
+    if (useconds() >= MILLION) {
+        usecs() -= MILLION;
+        ++secs();
+    }
+}
+
+void Timeval::operator -= (const DelayInterval& arg2)
+{
+    secs()  -= arg2.seconds();
+    usecs() -= arg2.useconds();
+    if ((int) useconds() < 0) {
+        usecs() += MILLION;
+        --secs();
+    }
+    if ((int) seconds() < 0) {
+        secs() = usecs() = 0;
+    }
+}
+
+DelayInterval operator - (const Timeval& arg1, const Timeval& arg2)
+{
+    time_base_seconds secs  = arg1.seconds() - arg2.seconds();
+    time_base_seconds usecs = arg1.useconds() - arg2.useconds();
+
+    if ((int) usecs < 0) {
+        usecs += MILLION;
+        --secs;
+    }
+    if ((int) secs < 0) {
+        return DELAY_ZERO;
+    } else {
+        return DelayInterval(secs, usecs);
+    }
+}
+
+DelayInterval operator * (short arg1, const DelayInterval& arg2)
+{
+    time_base_seconds result_seconds  = arg1 * arg2.seconds();
+    time_base_seconds result_useconds = arg1 * arg2.useconds();
+    time_base_seconds carry = result_useconds / MILLION;
+
+    result_useconds -= carry * MILLION;
+    result_seconds  += carry;
+    return DelayInterval(result_seconds, result_useconds);
+}
+
+#ifndef INT_MAX
+# define INT_MAX 0x7FFFFFFF
+#endif
+const DelayInterval DELAY_ZERO(0, 0);
+const DelayInterval DELAY_SECOND(1, 0);
+const DelayInterval DELAY_MINUTE = 60 * DELAY_SECOND;
+const DelayInterval DELAY_HOUR   = 60 * DELAY_MINUTE;
+const DelayInterval DELAY_DAY    = 24 * DELAY_HOUR;
+const DelayInterval ETERNITY(INT_MAX, MILLION - 1);
+intptr_t DelayQueueEntry::tokenCounter = 0;
+DelayQueueEntry::DelayQueueEntry(DelayInterval delay)
+    : fDeltaTimeRemaining(delay)
+{
+    fNext  = fPrev = this;
+    fToken = ++tokenCounter;
+}
+
+DelayQueueEntry::~DelayQueueEntry()
+{}
+
+void DelayQueueEntry::handleTimeout()
+{
+    delete this;
+}
+
+DelayQueue::DelayQueue()
+    : DelayQueueEntry(ETERNITY)
+{
+    fLastSyncTime = TimeNow();
+}
+
+DelayQueue::~DelayQueue()
+{
+    while (fNext != this) {
+        DelayQueueEntry* entryToRemove = fNext;
+        removeEntry(entryToRemove);
+        delete entryToRemove;
+    }
+}
+
+void DelayQueue::addEntry(DelayQueueEntry* newEntry)
+{
+    synchronize();
+    DelayQueueEntry* cur = head();
+    while (newEntry->fDeltaTimeRemaining >= cur->fDeltaTimeRemaining) {
+        newEntry->fDeltaTimeRemaining -= cur->fDeltaTimeRemaining;
+        cur = cur->fNext;
+    }
+    cur->fDeltaTimeRemaining -= newEntry->fDeltaTimeRemaining;
+    newEntry->fNext = cur;
+    newEntry->fPrev = cur->fPrev;
+    cur->fPrev      = newEntry->fPrev->fNext = newEntry;
+}
+
+void DelayQueue::updateEntry(DelayQueueEntry* entry, DelayInterval newDelay)
+{
+    if (entry == NULL) {
+        return;
+    }
+    removeEntry(entry);
+    entry->fDeltaTimeRemaining = newDelay;
+    addEntry(entry);
+}
+
+void DelayQueue::updateEntry(intptr_t tokenToFind, DelayInterval newDelay)
+{
+    DelayQueueEntry* entry = findEntryByToken(tokenToFind);
+
+    updateEntry(entry, newDelay);
+}
+
+void DelayQueue::removeEntry(DelayQueueEntry* entry)
+{
+    if (entry == NULL || entry->fNext == NULL) {
+        return;
+    }
+    entry->fNext->fDeltaTimeRemaining += entry->fDeltaTimeRemaining;
+    entry->fPrev->fNext = entry->fNext;
+    entry->fNext->fPrev = entry->fPrev;
+    entry->fNext        = entry->fPrev = NULL;
+}
+
+DelayQueueEntry * DelayQueue::removeEntry(intptr_t tokenToFind)
+{
+    DelayQueueEntry* entry = findEntryByToken(tokenToFind);
+
+    removeEntry(entry);
+    return entry;
+}
+
+DelayInterval const& DelayQueue::timeToNextAlarm()
+{
+    if (head()->fDeltaTimeRemaining == DELAY_ZERO) {
+        return DELAY_ZERO;
+    }
+    synchronize();
+    return head()->fDeltaTimeRemaining;
+}
+
+void DelayQueue::handleAlarm()
+{
+    if (head()->fDeltaTimeRemaining != DELAY_ZERO) {
+        synchronize();
+    }
+    if (head()->fDeltaTimeRemaining == DELAY_ZERO) {
+        DelayQueueEntry* toRemove = head();
+        removeEntry(toRemove);
+        toRemove->handleTimeout();
+    }
+}
+
+DelayQueueEntry * DelayQueue::findEntryByToken(intptr_t tokenToFind)
+{
+    DelayQueueEntry* cur = head();
+
+    while (cur != this) {
+        if (cur->token() == tokenToFind) {
+            return cur;
+        }
+        cur = cur->fNext;
+    }
+    return NULL;
+}
+
+void DelayQueue::synchronize()
+{
+    EventTime timeNow = TimeNow();
+
+    if (timeNow < fLastSyncTime) {
+        fLastSyncTime = timeNow;
+        return;
+    }
+    DelayInterval timeSinceLastSync = timeNow - fLastSyncTime;
+    fLastSyncTime = timeNow;
+    DelayQueueEntry* curEntry = head();
+    while (timeSinceLastSync >= curEntry->fDeltaTimeRemaining) {
+        timeSinceLastSync -= curEntry->fDeltaTimeRemaining;
+        curEntry->fDeltaTimeRemaining = DELAY_ZERO;
+        curEntry = curEntry->fNext;
+    }
+    curEntry->fDeltaTimeRemaining -= timeSinceLastSync;
+}
+
+EventTime TimeNow()
+{
+    struct timeval tvNow;
+
+    gettimeofday(&tvNow, NULL);
+    return EventTime(tvNow.tv_sec, tvNow.tv_usec);
+}
+
+const EventTime THE_END_OF_TIME(INT_MAX);
