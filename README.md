@@ -1,10 +1,12 @@
 RTMP Live
 ============
 ![screenshot](https://raw.github.com/jasonblog/RTMPLive/master/screenshot/RTMP_Live.png)  
-![screenshot](https://raw.github.com/jasonblog/RTMPLive/master/screenshot/9334191885812.jpg)  
 
 ## Features
 - push-stream / pull-stream
+
+## Media Server
+- Node-Media-Server
 
 ## Third party
 - libfaac
