@@ -1,7 +1,5 @@
 RTMP Live
 ============
-This is a program that show the position and orientation of cube in 3D scene.  
-
 ![screenshot](https://raw.github.com/jasonblog/RTMPLive/master/screenshot/RTMP_Live.png)  
 ![screenshot](https://raw.github.com/jasonblog/RTMPLive/master/screenshot/9334191885812.jpg)  
 
