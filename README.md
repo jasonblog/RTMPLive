@@ -8,6 +8,8 @@ RTMP Live
 ## Media Server
 - Node-Media-Server
 
+The RTMP protocol uses srs_librtmp.
+
 ## Third party
 - libfaac
 - libfaad2
